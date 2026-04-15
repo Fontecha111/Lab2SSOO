@@ -1,7 +1,7 @@
 all:
-	gcc banco.c -o banco
-	gcc usuario.c -o usuario -lpthread
-	gcc monitor.c -o monitor
+	gcc ../c/banco.c ../c/config.c -o banco 
+	gcc ../c/usuario.c ../c/config.c -o usuario -lpthread
+	gcc ../c/monitor.c ../c/config.c -o monitor
 
 clean:
 	rm -f banco usuario monitor

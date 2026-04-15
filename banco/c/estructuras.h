@@ -41,4 +41,27 @@ struct msgbuf {
     } info;
 };
 
+typedef struct {
+    int proximo_id;
+
+    float lim_retiro_eur;
+    float lim_retiro_usd;
+    float lim_retiro_gbp;
+
+    float lim_transf_eur;
+    float lim_transf_usd;
+    float lim_transf_gbp;
+
+    int umbral_retiros;
+    int umbral_transferencias;
+
+    int num_hilos;
+    char archivo_cuentas[100];
+    char archivo_log[100];
+
+    float cambio_usd;
+    float cambio_gbp;
+
+}Configuracion;
+
 #endif

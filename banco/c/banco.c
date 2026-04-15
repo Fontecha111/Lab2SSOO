@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <sys/msg.h>
 #include "estructuras.h"
+#include "config.h"
 
 int msgid;
 
@@ -52,6 +53,11 @@ void bucle_principal() {
 }
 
 int main() {
+
+    cargar_configuracion("../c/config.txt");
+    printf("Próximo ID a asignar: %d\n", config_banco.proximo_id);
+    printf("Limite de transferencias (EUR): %.2f\n", config_banco.lim_transf_eur);
+    printf("Umbral de retiros: %d\n", config_banco.umbral_retiros);
 
     msgid = msgget(IPC_PRIVATE, 0666 | IPC_CREAT);
 
