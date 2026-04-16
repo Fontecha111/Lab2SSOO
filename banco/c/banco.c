@@ -12,6 +12,7 @@
 
 
 int msgid;
+int pipe_lectura;
 
 void lanzar_monitor() {
     pid_t pid = fork();
@@ -82,7 +83,11 @@ void bucle_principal() {
         }
 
         int pipefd[2];
-        pipe(pipefd);
+        if(pipe(pipefd) == -1)
+        {
+            perror("Error creando el pipe");
+            continue;
+        }
 
         pid_t pid = fork();
 
@@ -90,9 +95,11 @@ void bucle_principal() {
             close(pipefd[1]);
 
             char cuenta_str[20];
+            char pipe_str[20];
             sprintf(cuenta_str, "%d", cuenta);
+            sprintf(pipe_str, "%d", pipefd[0]);
 
-            char *args[] = {"./usuario", cuenta_str, NULL};
+            char *args[] = {"./usuario", cuenta_str, pipe_str, NULL};
             execv("./usuario", args);
 
             perror("Error ejecutando usuario");
@@ -101,6 +108,7 @@ void bucle_principal() {
             close(pipefd[0]);
 
             waitpid(pid, NULL, 0);
+            close(pipefd[1]);
         }
     }
 }

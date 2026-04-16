@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include "estructuras.h"
 
+int numero_cuenta;
+int pipe_lectura;
+
 void *ejecutar_operacion(void *arg) {
 
     // TODO: implementar operación bancaria
@@ -39,6 +42,8 @@ void procesar_opcion(int opcion) {
 
         case 6:
             exit(0);
+            printf("Cerrando sesión de la cuenta %d...\n", numero_cuenta);
+            break;
 
         default:
             printf("Opcion invalida\n");
@@ -47,15 +52,30 @@ void procesar_opcion(int opcion) {
 
 int main(int argc, char *argv[]) {
 
-    int opcion;
+    if(argc != 3)
+    {
+        fprintf(stderr, "Has hecho un uso incorrecto. Tiene que llamarse desde el banco\n");
+        exit(1);
 
-    while (1) {
+        numero_cuenta = atoi(argv[1]);
+        pipe_lectura = atoi(argv[2]);
+    }
 
+    printf("\nSesión iniciada para la cuenta %d\n", numero_cuenta);
+    printf("Escuchando alertas del banco en el pipe %d\n", pipe_lectura);
+
+    int opcion = 0;
+
+    while(opcion != 6)
+    {
         mostrar_menu();
+        printf("Opción: ");
         scanf("%d", &opcion);
 
         procesar_opcion(opcion);
     }
+
+    close(pipe_lectura);    
 
     return 0;
 }
