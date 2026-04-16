@@ -96,10 +96,12 @@ void bucle_principal() {
 
             char cuenta_str[20];
             char pipe_str[20];
+            char msgid_str[20];
             sprintf(cuenta_str, "%d", cuenta);
             sprintf(pipe_str, "%d", pipefd[0]);
+            sprintf(msgid_str, "%d", msgid);
 
-            char *args[] = {"./usuario", cuenta_str, pipe_str, NULL};
+            char *args[] = {"./usuario", cuenta_str, pipe_str, msgid_str, NULL};
             execv("./usuario", args);
 
             perror("Error ejecutando usuario");
