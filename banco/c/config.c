@@ -89,7 +89,6 @@ void cargar_configuracion(const char *nom_archivo)
     }
 
     fclose(archivo);
-    printf("La configuración se ha cargado correctamente.");
 
     
 }
