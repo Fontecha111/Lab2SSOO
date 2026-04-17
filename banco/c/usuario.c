@@ -5,6 +5,7 @@
 #include "estructuras.h"
 #include <poll.h>
 #include <sys/msg.h>
+#include <semaphore.h>
 
 int numero_cuenta;
 int pipe_lectura;
@@ -13,8 +14,107 @@ int msgid;
 void *ejecutar_operacion(void *arg) {
 
     // TODO: implementar operación bancaria
+    int tipo_op = *(int*)arg;
+    free(arg);
 
-    pthread_exit(NULL);
+    sem_t *sem_cuentas = sem_open("/sem_cuentas", 0);
+    if(sem_cuentas == SEM_FAILED)
+    {
+        perror("Error abriendo semáforo en el hilo");
+        pthread_exit(NULL);
+    }
+
+    if(tipo_op == 4)
+    {
+        Cuenta c;
+        sem_wait(sem_cuentas);
+
+        FILE *f = fopen("../c/config.txt", "rb");
+        f = fopen("cuentas.dat", "rb");
+
+        if(f != NULL)
+        {
+            while(fread(&c, sizeof(Cuenta), 1, f))
+            {
+                if(c.numero_cuenta == numero_cuenta)
+                {
+                    printf("\n[SALDO ACTUAL] EUR: %.2f | USD: %.2f | GBP: %.2f\n", c.saldo_eur, c.saldo_usd, c.saldo_gbp);
+                    break;
+                }
+            }
+            fclose(f);
+        }
+        sem_post(sem_cuentas); //Barrera se levanta
+    }
+    else if(tipo_op == 1)
+    {
+        //OPCIÓN 1: DEPOSITAR
+        float cantidad;
+        printf("\nIntroduce la cantidad que quieres depositar (EUR): ");
+        scanf("%f", &cantidad);
+
+        Cuenta c;
+        int cuenta_encontrada = 0;
+
+        sem_wait(sem_cuentas); //Barrera bajada
+
+
+
+        FILE *f = fopen("cuentas.dat", "r+b");
+        if(f != NULL)
+        {
+            while(fread(&c, sizeof(Cuenta), 1, f))
+            {
+                if(c.numero_cuenta == numero_cuenta)
+                {
+                    cuenta_encontrada = 1;
+
+                    c.saldo_eur += cantidad;
+                    c.num_transacciones++;
+
+                    fseek(f, -sizeof(Cuenta), SEEK_CUR);
+
+
+                    fwrite(&c, sizeof(Cuenta), 1, f);
+                    break;
+                }
+            }
+            fclose(f);
+        }
+        sem_post(sem_cuentas); //Barrera levantada
+
+        if(cuenta_encontrada)
+        {
+            printf("[EXITO] Has depositado %.2f EUR\n", cantidad);
+
+
+            struct msgbuf msj;
+            msj.mtype = 1; //Tipo 1 = Mensaje para el Monitor
+
+            msj.info.monitor.cuenta_origen = numero_cuenta;
+            msj.info.monitor.tipo_op = tipo_op;
+            msj.info.monitor.cantidad = cantidad;
+            msj.info.monitor.divisa = 1; //Supongamos 1 = EUR
+
+
+            //Enviamos el mensaje a la cola (msgid es la variable global)
+            if(msgsnd(msgid, &msj, sizeof(msj.info), 0) == -1)
+            {
+                perror("Error enviando el mensaje al monitor");
+            }
+            else
+            {
+                printf("[SISTEMA] Notifiación enviada al Monitor.\n");
+            }
+
+        }
+        else
+        {
+            printf("\n[INFO] Esta opción se programará más adelante, no te preocupes ;)\n");
+        }
+
+        pthread_exit(NULL);
+    }
 }
 
 void mostrar_menu() {
@@ -39,7 +139,10 @@ void procesar_opcion(int opcion) {
         case 3:
         case 4:
         case 5:
-            pthread_create(&thread, NULL, ejecutar_operacion, NULL);
+            int *arg_opcion = malloc(sizeof(int));
+            *arg_opcion = opcion;
+
+            pthread_create(&thread, NULL, ejecutar_operacion, arg_opcion);
             pthread_join(thread, NULL);
             break;
 
@@ -58,79 +161,68 @@ int main(int argc, char *argv[]) {
     if(argc != 4)
     {
         fprintf(stderr, "Has hecho un uso incorrecto. Tiene que llamarse desde el banco\n");
-        exit(1);
+        return 1;
 
-        numero_cuenta = atoi(argv[1]);
-        pipe_lectura = atoi(argv[2]);
-        msgid = atoi(argv[3]);
     }
 
-    printf("\nSesión iniciada para la cuenta %d\n", numero_cuenta);
+    numero_cuenta = atoi(argv[1]);
+pipe_lectura = atoi(argv[2]);
+msgid = atoi(argv[3]);
 
-    struct pollfd fds[2];
-    fds[0].fd = STDIN_FILENO; // Canal 0: El teclado
-    fds[0].events = POLLIN;   // Queremos saber cuándo hay datos de entrada (IN)
-    
-    fds[1].fd = pipe_lectura; // Canal 1: El pipe del banco
-    fds[1].events = POLLIN;
+printf("\nSesión iniciada para la cuenta %d\n", numero_cuenta);
 
-    int opcion = 0;
+struct pollfd fds[2];
+fds[0].fd = STDIN_FILENO;
+fds[0].events = POLLIN;
+
+fds[1].fd = pipe_lectura;
+fds[1].events = POLLIN;
+
+int opcion = 0;
+fflush(stdout);
+
+while (opcion != 6) {
     mostrar_menu();
-    printf("Opcion: ");
-    fflush(stdout);
+    printf("Opción: ");
+    scanf("%d", &opcion);
 
-    while(opcion != 6)
-    {
-        mostrar_menu();
-        printf("Opción: ");
-        scanf("%d", &opcion);
+    procesar_opcion(opcion);
 
-        procesar_opcion(opcion);
+    int ret = poll(fds, 2, -1);
 
-        int ret = poll(fds, 2, -1);
+    if (ret > 0) {
+        if (fds[1].revents & POLLIN) {
+            char alerta[256];
+            int bytes_leidos = read(pipe_lectura, alerta, sizeof(alerta) - 1);
+            if (bytes_leidos > 0) {
+                alerta[bytes_leidos] = '\0';
+                printf("\nALERTA DEL BANCO %s\n", alerta);
 
-        if(ret > 0)
-        {
-            if(fds[1].revents & POLLIN)
-            {
-                char alerta[256];
-                int bytes_leidos = read(pipe_lectura, alerta, sizeof(alerta) - 1);
-                if(bytes_leidos > 0)
-                {
-                    alerta[bytes_leidos] = '\0';
-                    printf("\nALERTA DEL BANCO %s\n", alerta);
+                mostrar_menu();
+                printf("Opción: ");
+                fflush(stdout);
+            }
+        }
 
+        if (fds[0].revents & POLLIN) {
+            char buffer[10];
+            if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+                opcion = atoi(buffer);
+
+                if (opcion > 0 && opcion <= 6) {
+                    procesar_opcion(opcion);
+                }
+
+                if (opcion != 6) {
                     mostrar_menu();
                     printf("Opción: ");
                     fflush(stdout);
                 }
             }
-
-            if(fds[0].revents & POLLIN)
-            {
-                char buffer[10];
-                if(fgets(buffer, sizeof(buffer), stdin) != NULL)
-                {
-                    opcion = atoi(buffer);
-
-                    if(opcion > 0 && opcion <= 6)
-                    {
-                        procesar_opcion(opcion);
-                    }
-
-                    if(opcion != 6)
-                    {
-                        mostrar_menu();
-                        printf("Opción: ");
-                        fflush(stdout);
-                    }
-                }
-            }
         }
     }
+}
 
-    //Limpieza final
-    close(pipe_lectura);    
-
-    return 0;
+close(pipe_lectura);
+return 0;
 }

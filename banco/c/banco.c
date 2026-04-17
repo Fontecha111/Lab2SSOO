@@ -118,7 +118,7 @@ void bucle_principal() {
 int main() {
 
     cargar_configuracion("../c/config.txt");
-    printf("La configuración se ha cargado correctamente\n");
+    
     
     sem_unlink("/sem_cuentas");
     sem_unlink("/sem_config");
