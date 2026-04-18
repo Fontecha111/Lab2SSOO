@@ -44,6 +44,11 @@ struct msgbuf {
 typedef struct {
     int proximo_id;
 
+    //Límites de depósito
+    float lim_dep_eur;
+    float lim_dep_usd;
+    float lim_dep_gbp;
+
     float lim_retiro_eur;
     float lim_retiro_usd;
     float lim_retiro_gbp;

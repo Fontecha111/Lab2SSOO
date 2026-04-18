@@ -32,6 +32,18 @@ void cargar_configuracion(const char *nom_archivo)
             {
                 config_banco.proximo_id = atoi(valor_str);
             } 
+            else if(strcmp(clave, "LIM_DEP_EUR") == 0)
+            {
+                config_banco.lim_dep_eur = atof(valor_str);
+            }
+            else if(strcmp(clave, "LIM_DEP_USD") == 0)
+            {
+                config_banco.lim_dep_usd = atof(valor_str);
+            }
+            else if(strcmp(clave, "LIM_DEP_GBP") == 0)
+            {
+                config_banco.lim_dep_gbp = atof(valor_str);
+            }
             else if (strcmp(clave, "LIM_RETIRO_EUR") == 0)
             {
                 config_banco.lim_retiro_eur = atof(valor_str);
