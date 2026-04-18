@@ -14,14 +14,78 @@ int numero_cuenta;
 int pipe_lectura;
 int msgid;
 
-static int leer_cantidad_deposito(float *cantidad)
+static const char *nom_divisa(int divisa)
+{
+    if(divisa == 1)
+    {
+        return "EUR";
+    }
+
+    if(divisa == 2)
+    {
+        return "USD";
+    }
+
+    if(divisa == 3)
+    {
+        return "GBP";
+    }
+
+    return "DESCONOCIDA";
+}
+
+static int leer_divisa_deposito(int *divisa)
 {
     char buffer[128];
     char *endptr;
+    long valor;
 
-    printf("\nPor favor, introduce la cantidad que quieres depositar (EUR): ");
+    printf("\nPor favor, selecciona la divisa que quieres usar en el depósito: \n");
+    printf("1. EUR\n");
+    printf("2. USD\n");
+    printf("3. GBP\n");
+    printf("Divisa: ");
     fflush(stdout);
 
+    if(fgets(buffer, sizeof(buffer), stdin) == NULL)
+    {
+        return 0;
+    }
+
+    errno = 0;
+    valor = strtol(buffer, &endptr, 10);
+
+    if(endptr == buffer)
+    {
+        return 0;
+    }
+
+    while(*endptr == ' ' || *endptr == '\t')
+    {
+        endptr++;
+    }
+
+    if(*endptr != '\n' && *endptr != '\0')
+    {
+        return 0;
+    }
+
+    if(errno == ERANGE || valor < 1 || valor > 3)
+    {
+        return 0;
+    }
+
+    *divisa = (int)valor;
+    return 1;
+}
+
+static int leer_cantidad_deposito(float *cantidad, int divisa)
+{
+    char buffer[123];
+    char *endptr;
+
+    printf("\nPor favor, introduce la cantidad que quieres depositar (%s): ", nom_divisa(divisa));
+    fflush(stdout);
 
     if(fgets(buffer, sizeof(buffer), stdin) == NULL)
     {
@@ -94,8 +158,17 @@ void *ejecutar_operacion(void *arg) {
     else if(tipo_op == 1)
     {
         //OPCIÓN 1: DEPOSITAR
+        int divisa;
         float cantidad;
-        if(!leer_cantidad_deposito(&cantidad))
+        if(!leer_divisa_deposito(&divisa))
+        {
+            printf("[ERROR] La divisa introducida no es válida. Elige 1 (EUR), 2 (USD) o 3 (GBP)\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+            
+        }
+
+        if(!leer_cantidad_deposito(&cantidad, divisa))
         {
             printf("[ERROR] La cantidad introducida no es válida. Introduce un número positivo y válido");
             sem_close(sem_cuentas);
@@ -118,8 +191,20 @@ void *ejecutar_operacion(void *arg) {
                 if(c.numero_cuenta == numero_cuenta)
                 {
                     cuenta_encontrada = 1;
-
-                    c.saldo_eur += cantidad;
+                    
+                    //Modificamos el saldo según la divisa elegida
+                    if(divisa == 1)
+                    {
+                        c.saldo_eur += cantidad;
+                    }
+                    else if(divisa == 2)
+                    {
+                        c.saldo_usd += cantidad;
+                    }
+                    else 
+                    {
+                        c.saldo_gbp += cantidad;
+                    }
                     c.num_transacciones++;
 
                     fseek(f, -sizeof(Cuenta), SEEK_CUR);
@@ -135,7 +220,7 @@ void *ejecutar_operacion(void *arg) {
 
         if(cuenta_encontrada)
         {
-            printf("[EXITO] Has depositado %.2f EUR\n", cantidad);
+            printf("[EXITO] Has depositado %.2f %s\n", cantidad, nom_divisa(divisa));
 
 
             struct msgbuf msj;
@@ -144,7 +229,7 @@ void *ejecutar_operacion(void *arg) {
             msj.info.monitor.cuenta_origen = numero_cuenta;
             msj.info.monitor.tipo_op = tipo_op;
             msj.info.monitor.cantidad = cantidad;
-            msj.info.monitor.divisa = 1; //Supongamos 1 = EUR
+            msj.info.monitor.divisa = divisa;
 
 
             //Enviamos el mensaje a la cola (msgid es la variable global)
@@ -255,6 +340,7 @@ while (opcion != 6) {
     mostrar_menu();
     printf("Opción: ");
     scanf("%d", &opcion);
+
 
     procesar_opcion(opcion);
 
