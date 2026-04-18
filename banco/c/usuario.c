@@ -118,6 +118,45 @@ static int leer_cantidad_deposito(float *cantidad, int divisa)
     return 1;
 }
 
+static int leer_cantidad_retiro(float *cantidad, int divisa)
+{
+    char buffer[128];
+    char *endptr;
+
+    printf("\nIntroduce la cantidad que quieres retirar (%s): ", nom_divisa(divisa));
+    fflush(stdout);
+
+    if(fgets(buffer, sizeof(buffer), stdin) == NULL)
+    {
+        return 0;
+    }
+
+    errno = 0;
+    *cantidad = strtof(buffer, &endptr);
+
+    if(endptr == buffer)
+    {
+        return 0;
+    }
+
+    while(*endptr == ' ' || *endptr == '\t')
+    {
+        endptr++;
+    }
+
+    if(*endptr != '\n' && *endptr != '\0')
+    {
+        return 0;
+    }
+
+    if(errno == ERANGE || !isfinite(*cantidad) || *cantidad <= 0.0f)
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
 
 
 void *ejecutar_operacion(void *arg) {
@@ -241,16 +280,118 @@ void *ejecutar_operacion(void *arg) {
             {
                 printf("[SISTEMA] Notifiación enviada al Monitor.\n");
             }
+        }
+    }
+    else if(tipo_op == 2)
+    {
+        //OPCIÓN 2: RETIRO 
+        int divisa;
+        float cantidad;
+        if(!leer_divisa_deposito(&divisa))
+        {
+            printf("[ERROR] Esa divisa no es válida. Elige 1 (EUR), 2 (USD) o 3 (GBP)\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+        }
 
+        if(!leer_cantidad_retiro(&cantidad, divisa))
+        {
+            printf("[ERROR] Esa cantidad no es válida. Introduce un número positivo y válido\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+        }
+
+        Cuenta c;
+        int cuenta_encontrada = 0;
+        int retiro_realizado = 0;
+
+        sem_wait(sem_cuentas); //Barrera bajada
+
+        FILE *f = fopen("cuentas.dat", "r+b");
+        if(f != NULL)
+        {
+            while(fread(&c, sizeof(Cuenta), 1, f))
+            {
+                if(c.numero_cuenta == numero_cuenta)
+                {
+                    cuenta_encontrada = 1;
+
+                    if(divisa == 1)
+                    {
+                        if(c.saldo_eur >= cantidad)
+                        {
+                            c.saldo_eur -= cantidad;
+                            retiro_realizado = 1;
+                        }
+                    }
+                    else if(divisa == 2)
+                    {
+                        if(c.saldo_usd >= cantidad)
+                        {
+                            c.saldo_usd -= cantidad;
+                            retiro_realizado = 1;
+                        }
+                    }
+                    else
+                    {
+                        if(c.saldo_gbp >= cantidad)
+                        {
+                            c.saldo_gbp -= cantidad;
+                            retiro_realizado = 1;
+                        }
+                    }
+
+                    if(retiro_realizado)
+                    {
+                        c.num_transacciones++;
+                        fseek(f, -sizeof(Cuenta), SEEK_CUR);
+                        fwrite(&c, sizeof(Cuenta), 1, f);
+                    }
+                    break;
+                }
+            }
+
+            fclose(f);
+        }
+        sem_post(sem_cuentas); //Barrera levantada
+        
+        if(!cuenta_encontrada)
+        {
+            printf("[ERROR] No se encontro la cuenta %d\n", numero_cuenta);
+        }
+        else if(!retiro_realizado)
+        {
+            printf("[ERROR] Saldo insuficiente para retirar %.2f %s\n", cantidad, nom_divisa(divisa));
         }
         else
         {
-            printf("\n[INFO] Esta opción se programará más adelante, no te preocupes ;)\n");
-        }
+            printf("[ERROR] Has retirado %.2f %s\n", cantidad, nom_divisa(divisa));
 
-        sem_close(sem_cuentas);
-        pthread_exit(NULL);
+            struct msgbuf msj;
+            msj.mtype = 1; //Tipo 1: Mensaje para el Monitor
+
+            msj.info.monitor.cuenta_origen = numero_cuenta;
+            msj.info.monitor.tipo_op = tipo_op;
+            msj.info.monitor.cantidad = cantidad;
+            msj.info.monitor.divisa = divisa;
+
+            if(msgsnd(msgid, &msj, sizeof(msj.info), 0) == -1)
+            {
+                perror("Error al enviar mensaje al monitor");
+            }
+            else
+            {
+                printf("[SISTEMA] Notificación enviada al Monitor\n");
+            }
+        }
     }
+    else
+    {
+        printf("\n[INFO] Esto se programará más adelante, tranquilo Titel ;)\n"); 
+    }
+
+    sem_close(sem_cuentas);
+    pthread_exit(NULL);
 }
 
 void mostrar_menu() {
