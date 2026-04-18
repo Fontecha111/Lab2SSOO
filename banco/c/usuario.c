@@ -340,7 +340,8 @@ while (opcion != 6) {
     mostrar_menu();
     printf("Opción: ");
     scanf("%d", &opcion);
-
+    int ch;
+    while ((ch = getchar()) != '\n' && ch != EOF) {}
 
     procesar_opcion(opcion);
 
