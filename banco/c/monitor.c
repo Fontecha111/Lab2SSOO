@@ -86,6 +86,22 @@ static float obtener_limite_operacion(int tipo_op, int divisa)
         }
     }
 
+    if(tipo_op == 3)
+    {
+        if(divisa == 1)
+        {
+            return config_banco.lim_transf_eur;
+        }
+        if(divisa == 2)
+        {
+            return config_banco.lim_transf_usd;
+        }
+        if(divisa == 3)
+        {
+            return config_banco.lim_transf_gbp;
+        }
+    }
+
     return 0.0f;
 }
 
@@ -101,7 +117,15 @@ void analizar_transaccion(DatosMonitor *datos, int msgid) {
         time_t t = time(NULL);
         struct tm *tm = localtime(&t);
 
-        fprintf(log, "[%02d:%02d:%02d] CUENTA: %d | OP: %s(%d) | CANTIDAD: %.2f | DIVISA: %d (%s)\n", tm->tm_hour, tm->tm_min, tm->tm_sec, datos->cuenta_origen, nombre_operacion(datos->tipo_op), datos->tipo_op, datos->cantidad, datos->divisa, nom_divisa(datos->divisa));
+        if(datos->tipo_op == 3)
+        {
+            fprintf(log, "[%02d:%02d:%02d] ORIGEN: %d | DESTINO: %d | OP: %s(%d) | CANT: %.2f | DIVISA: %d (%s)\n", tm->tm_hour, tm->tm_min, tm->tm_sec, datos->cuenta_origen, datos->cuenta_destino, nombre_operacion(datos->tipo_op), datos->tipo_op, datos->cantidad, datos->divisa, nom_divisa(datos->divisa));
+        }
+        else
+        {
+            fprintf(log, "[%02d:%02d:%02d] CUENTA: %d | OP: %s(%d) | CANTIDAD: %.2f | DIVISA: %d (%s)\n", tm->tm_hour, tm->tm_min, tm->tm_sec, datos->cuenta_origen, nombre_operacion(datos->tipo_op), datos->tipo_op, datos->cantidad, datos->divisa, nom_divisa(datos->divisa));
+        }
+
         fclose(log);
     }
     else
@@ -111,7 +135,7 @@ void analizar_transaccion(DatosMonitor *datos, int msgid) {
         
 
     //Si la operación es un depósito
-    if(datos->tipo_op == 1 || datos->tipo_op == 2)
+    if(datos->tipo_op == 1 || datos->tipo_op == 2 || datos->tipo_op == 3)
     {
         float limite = obtener_limite_operacion(datos->tipo_op, datos->divisa);
 

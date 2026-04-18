@@ -186,7 +186,14 @@ void bucle_principal() {
                 {
                     //Hemos recibido una alerta. Preparamos el texto a enviar al usuario
                     char mensaje_pipe[256];
-                    sprintf(mensaje_pipe, "CUIDADO: Se ha detectado un mobimiento sospechoso de %.2f %s en tu cuenta.", alerta.info.monitor.cantidad, nombre_divisa(alerta.info.monitor.divisa));
+                    if(alerta.info.monitor.tipo_op == 3)
+                    {
+                        sprintf(mensaje_pipe, "CUIDADO: Transferencia sospechosa de %.2f %s hacia la cuenta %d", alerta.info.monitor.cantidad, nombre_divisa(alerta.info.monitor.divisa), alerta.info.monitor.cuenta_destino);
+                    }
+                    else
+                    {
+                        sprintf(mensaje_pipe, "CUIDADO: Se ha detectado un movimiento sospechoso de %.2f %s en tu cuenta", alerta.info.monitor.cantidad, nombre_divisa(alerta.info.monitor.divisa));
+                    }
 
                     //Se lo enviamos al usuario por el pipe
                     write(pipefd[1], mensaje_pipe, strlen(mensaje_pipe));

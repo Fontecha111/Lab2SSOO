@@ -157,6 +157,86 @@ static int leer_cantidad_retiro(float *cantidad, int divisa)
     return 1;
 }
 
+static int leer_cuenta_destino(int *cuenta_destino)
+{
+    char buffer[128];
+    char *endptr;
+    long valor;
+
+    printf("\nIntroduce el número de cuenta de destino: ");
+    fflush(stdout);
+
+    if(fgets(buffer, sizeof(buffer), stdin) == NULL)
+    {
+        return 0;
+    }
+
+    errno = 0;
+    valor = strtol(buffer, &endptr, 10);
+
+    if(endptr == buffer)
+    {
+        return 0;
+    }
+
+
+    while(*endptr == ' ' || *endptr == '\t')
+    {
+        endptr++;
+    }
+
+    if(*endptr != '\n' && *endptr != '\0')
+    {
+        return 0;
+    }
+
+    if(errno == ERANGE || valor <= 0)
+    {
+        return 0;
+    }
+
+    *cuenta_destino = (int) valor;
+    return 1;
+}
+
+static int leer_cantidad_transferencia(float *cantidad, int divisa)
+{
+    char buffer[128];
+    char *endptr;
+
+    printf("\nIntroduce la cantidad que quieres transferir (%s): ", nom_divisa(divisa));
+    fflush(stdout);
+
+    if(fgets(buffer, sizeof(buffer), stdin) == NULL)
+    {
+        return 0;
+    }
+
+    errno = 0;
+    *cantidad = strtof(buffer, &endptr);
+
+    if(endptr == buffer)
+    {
+        return 0;
+    }
+
+    while(*endptr == ' ' || *endptr == '\t')
+    {
+        endptr++;
+    }
+
+    if(*endptr != '\n' && *endptr != '\0')
+    {
+        return 0;
+    }
+
+    if(errno == ERANGE || !isfinite(*cantidad) || *cantidad <= 0.0f)
+    {
+        return 0;
+    }
+
+    return 1;
+}
 
 
 void *ejecutar_operacion(void *arg) {
@@ -284,19 +364,19 @@ void *ejecutar_operacion(void *arg) {
     }
     else if(tipo_op == 2)
     {
-        //OPCIÓN 2: RETIRO 
+        //OPCIÓN 2: RETIRO
         int divisa;
         float cantidad;
         if(!leer_divisa_deposito(&divisa))
         {
-            printf("[ERROR] Esa divisa no es válida. Elige 1 (EUR), 2 (USD) o 3 (GBP)\n");
+            printf("[ERROR] La divisa no es válida. Elige 1(EUR), 2 (USD) o 3 (GBP)\n");
             sem_close(sem_cuentas);
             pthread_exit(NULL);
         }
 
         if(!leer_cantidad_retiro(&cantidad, divisa))
         {
-            printf("[ERROR] Esa cantidad no es válida. Introduce un número positivo y válido\n");
+            printf("[ERROR] La cantidad no es válida. Introduce un número positivo y válid.\n");
             sem_close(sem_cuentas);
             pthread_exit(NULL);
         }
@@ -371,6 +451,163 @@ void *ejecutar_operacion(void *arg) {
             msj.mtype = 1; //Tipo 1: Mensaje para el Monitor
 
             msj.info.monitor.cuenta_origen = numero_cuenta;
+            msj.info.monitor.tipo_op = tipo_op;
+            msj.info.monitor.cantidad = cantidad;
+            msj.info.monitor.divisa = divisa;
+
+            if(msgsnd(msgid, &msj, sizeof(msj.info), 0) == -1)
+            {
+                perror("Error enviando el mensaje al monitor");
+            }
+            else
+            {
+                printf("[SISTEMA] Notificación enviada al Monitor\n");
+            }
+        }
+        
+    }
+    else if(tipo_op == 3)
+    {
+        //OPCIÓN 3: TRANSFERENCIA 
+        int cuenta_destino;
+        int divisa;
+        float cantidad;
+
+        if(!leer_cuenta_destino(&cuenta_destino))
+        {
+            printf("[ERROR] Número de cuenta de destino no válido\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+        }
+
+        if(cuenta_destino == numero_cuenta)
+        {
+            printf("[ERROR] No puedes transferir dinero a tu propia cuenta\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+        }
+
+        if(!leer_divisa_deposito(&divisa))
+        {
+            printf("[ERROR] Esa divisa no es válida. Elige 1 (EUR), 2 (USD) o 3 (GBP)\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+        }
+
+        if(!leer_cantidad_transferencia(&cantidad, divisa))
+        {
+            printf("[ERROR] Cantidad no válida. Introduce un número positivo y válido\n");
+            sem_close(sem_cuentas);
+            pthread_exit(NULL);
+        }
+
+        Cuenta cuenta_origen;
+        Cuenta cuenta_dest;
+        int origen_encontrado = 0;
+        int destino_encontrado = 0;
+        int transferencia_realizada = 0;
+        long pos_origen = -1;
+        long pos_destino = -1;
+
+        sem_wait(sem_cuentas); //Barrera bajada
+
+        FILE *f = fopen("cuentas.dat", "r+b");
+        if(f != NULL)
+        {
+            Cuenta c;
+            while(fread(&c, sizeof(Cuenta), 1, f))
+            {
+                long pos_actual = ftell(f) - (long)sizeof(Cuenta);
+                if(c.numero_cuenta == numero_cuenta)
+                {
+                    cuenta_origen = c;
+                    pos_origen = pos_actual;
+                    origen_encontrado = 1;
+                }
+
+                if(c.numero_cuenta == cuenta_destino)
+                {
+                    cuenta_dest = c;
+                    pos_destino = pos_actual;
+                    destino_encontrado = 1;
+                }
+
+                if(origen_encontrado && destino_encontrado)
+                {
+                    break;
+                }
+
+            }
+
+            if(origen_encontrado && destino_encontrado)
+            {
+                if(divisa == 1)
+                {
+                    if(cuenta_origen.saldo_eur >= cantidad)
+                    {
+                        cuenta_origen.saldo_eur -= cantidad;
+                        cuenta_dest.saldo_eur += cantidad;
+                        transferencia_realizada = 1;
+                    }
+                }
+                else if(divisa == 2)
+                {
+                    if(cuenta_origen.saldo_usd >= cantidad)
+                    {
+                        cuenta_origen.saldo_usd -= cantidad;
+                        cuenta_dest.saldo_usd += cantidad;
+                        transferencia_realizada = 1;
+                    }
+                }
+                else if(divisa == 3)
+                {
+                    if(cuenta_origen.saldo_gbp >= cantidad)
+                    {
+                        cuenta_origen.saldo_gbp -= cantidad;
+                        cuenta_dest.saldo_gbp += cantidad;
+                        transferencia_realizada = 1;
+                    }
+                }
+
+                if(transferencia_realizada)
+                {
+                    cuenta_origen.num_transacciones++;
+                    cuenta_dest.num_transacciones;
+
+                    fseek(f, pos_origen, SEEK_SET);
+                    fwrite(&cuenta_origen, sizeof(Cuenta), 1, f);
+
+                    fseek(f, pos_destino, SEEK_SET);
+                    fwrite(&cuenta_dest, sizeof(Cuenta), 1, f);
+                }
+                        
+            }
+
+            fclose(f);
+        }
+        sem_post(sem_cuentas); //Barrera levantada
+        
+        if(!origen_encontrado)
+        {
+            printf("[ERROR] No se encontro la cuenta %d\n", numero_cuenta);
+        }
+        else if(!destino_encontrado)
+        {
+            printf("[ERROR] La cuenta de destino %d no existe\n", cuenta_destino);
+        }
+        else if(!transferencia_realizada)
+        {
+            printf("[ERROR] Saldo no suficiento para transferir %.2f %s\n", cantidad, nom_divisa(divisa));
+        }
+        else
+        {
+            printf("[ERROR] Se ha completado la transferencia de %.2f %s a la cuenta %d\n", cantidad, nom_divisa(divisa), cuenta_destino);
+
+            struct msgbuf msj;
+            msj.mtype = 1; //Tipo 1: Mensaje para el Monitor
+
+            msj.info.monitor.cuenta_origen = numero_cuenta;
+            msj.info.monitor.cuenta_destino = cuenta_destino;
             msj.info.monitor.tipo_op = tipo_op;
             msj.info.monitor.cantidad = cantidad;
             msj.info.monitor.divisa = divisa;
