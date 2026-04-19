@@ -33,6 +33,41 @@ static const char *nombre_divisa(int divisa)
     return "DESCONOCIDA";
 }
 
+static int cuenta_existe(int numero_cuenta)
+{
+    sem_t *sem_cuentas = sem_open("/sem_cuentas", 0);
+    if(sem_cuentas == SEM_FAILED)
+    {
+        perror("Error abriendo semáforo en la validación de la cuenta");
+        return 0;
+    }
+
+    int existe = 0;
+    Cuenta c;
+
+    sem_wait(sem_cuentas);
+
+    FILE *archivo = fopen(config_banco.archivo_cuentas, "rb");
+    if(archivo != NULL)
+    {
+        while(fread(&c, sizeof(Cuenta), 1, archivo))
+        {
+            if(c.numero_cuenta == numero_cuenta)
+            {
+                existe = 1;
+                break;
+            }
+        }
+        fclose(archivo);
+    }
+
+    sem_post(sem_cuentas);
+    sem_close(sem_cuentas);
+
+
+    return existe;
+}
+
 void lanzar_monitor() {
     pid_t pid = fork();
 
@@ -130,6 +165,11 @@ void bucle_principal() {
             {
                 continue;
             }
+        }
+        else if(!cuenta_existe(cuenta))
+        {
+            printf("[BANCO] La cuenta %d no existe. Usa 0 para poder crear una nueva o introduce una cuenta válida por favor\n", cuenta);
+            continue;
         }
 
         int pipefd[2];
